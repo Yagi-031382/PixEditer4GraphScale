@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7fb">
+  <title>Pixel Color — 同じ色をまとめて置き換え</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header><span class="brand">▦ Pixel Color</span><span class="badge">画像は端末内で処理</span></header>
+    <section class="intro"><p class="eyebrow">PIXEL COLOR REPLACER</p><h1>ひとつの色から、<br>画像を変えよう。</h1><p>ピクセルを選んで、同じ色をまとめて置き換え。<br>背景の透明化も、色の変更も、ブラウザだけで。</p></section>
+    <div class="workspace">
+      <section class="editor" aria-label="画像プレビュー">
+        <div class="toolbar"><label class="button secondary" for="file">画像を開く</label><input id="file" type="file" accept="image/*"><span id="dimensions">PNG・JPEG・WebP など</span><label class="zoom">表示倍率 <select id="zoom" disabled><option value="fit">全体表示</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option><option value="8">800%</option></select></label></div>
+        <div id="viewport" class="viewport"><div id="empty"><span class="empty-icon">▧</span><h2>ここから画像を開く</h2><p>上の「画像を開く」からファイルを選択<br>または、ここにドラッグ＆ドロップ</p></div><canvas id="canvas" hidden aria-label="画像内のピクセルをクリックして色を選択"></canvas></div>
+        <p class="hint">クリックで色を取得 · チェッカー模様は透明な部分です</p>
+      </section>
+      <aside>
+        <section class="card"><h2><span class="step">01</span> 元の色を選ぶ</h2><p>画像の置き換えたい色をクリック。</p><div class="color-readout"><span id="source-swatch" class="swatch"></span><div><strong id="source-value">未選択</strong><small id="source-detail">画像を開いて始めましょう</small></div></div><p id="matches" class="muted">完全に同じ RGBA 値の色を対象にします。</p></section>
+        <section class="card"><h2><span class="step">02</span> 置き換え先を決める</h2><fieldset id="controls" disabled><legend class="sr-only">置き換え先</legend><label class="choice"><input type="radio" name="mode" value="color" checked> 指定した色に変更</label><div class="target-color"><input id="target" type="color" value="#6c5ce7" aria-label="置き換え先の色"><span id="target-value">#6C5CE7</span></div><label class="choice"><input type="radio" name="mode" value="transparent"> 透明にする</label><button id="replace" class="button primary" disabled>同じ色をすべて置き換え</button></fieldset></section>
+        <div class="actions"><button id="undo" class="button secondary" disabled>元に戻す</button><button id="reset" class="button secondary" disabled>最初の画像に戻す</button></div>
+        <button id="download" class="button download" disabled>↓ PNG で保存</button>
+        <p class="note">元の画像サイズのまま保存します。JPEG などの圧縮画像では、似て見える色でも値が異なる場合があります。</p>
+      </aside>
+    </div>
+    <p id="status" role="status" aria-live="polite">画像ファイルを選択してください。</p>
+    <footer>サーバーへの画像送信はありません。すべての編集は、このブラウザ内で完結します。</footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
