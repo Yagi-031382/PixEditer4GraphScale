@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const canvas = $('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 let original = null, previous = null, selected = [], fileName = 'image', loadVersion = 0;
+let region = { left: 0, right: 1, top: 0, bottom: 1 };
 const hex = color => '#' + color.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
 const status = message => { $('status').textContent = message; };
 function fit() {
@@ -10,10 +11,13 @@ function fit() {
   const scale = $('zoom').value === 'fit' ? Math.min(1, ($('viewport').clientWidth - 24) / canvas.width, ($('viewport').clientHeight - 24) / canvas.height) : Number($('zoom').value);
   canvas.style.width = `${canvas.width * scale}px`;
   canvas.style.height = `${canvas.height * scale}px`;
+  $('image-stage').style.width = canvas.style.width;
+  $('image-stage').style.height = canvas.style.height;
+  renderRegion();
 }
 function updateMatches() {
-  const count = original ? countSelections(ctx.getImageData(0, 0, canvas.width, canvas.height).data, selected) : 0;
-  $('matches').textContent = selected.length ? `${selected.length} 色を選択 · ${count.toLocaleString()} ピクセルが一致（重複なし）` : '画像をクリックして色を追加してください。';
+  const count = original ? countSelections(regionImage().data, selected) : 0;
+  $('matches').textContent = selected.length ? `${selected.length} 色を選択 · ${count.toLocaleString()} ピクセルが領域内で一致（重複なし）` : '画像をクリックして色を追加してください。';
   $('replace').disabled = count === 0;
   $('clear-selection').disabled = selected.length === 0;
 }
@@ -77,7 +81,10 @@ async function openFile(file) {
     ctx.drawImage(img, 0, 0);
     original = ctx.getImageData(0, 0, canvas.width, canvas.height);
     previous = null; selected = []; fileName = file.name.replace(/\.[^.]+$/, '') || 'image';
-    canvas.hidden = false; $('empty').hidden = true;
+    canvas.hidden = false; $('image-stage').hidden = false; $('empty').hidden = true;
+    region = { left: 0, right: canvas.width, top: 0, bottom: canvas.height };
+    $('region-controls').disabled = false;
+    $('region-enabled').checked = false;
     $('controls').disabled = false; $('download').disabled = false; $('reset').disabled = false; $('zoom').disabled = false; $('undo').disabled = true;
     $('dimensions').textContent = `${canvas.width} × ${canvas.height} px`;
     $('zoom').value = 'fit'; fit(); showSelection();
@@ -101,12 +108,13 @@ canvas.addEventListener('click', e => {
 });
 $('replace').addEventListener('click', () => {
   if (!selected.length) return;
-  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const bounds = activeRegion();
+  const data = regionImage();
   const color = $('target').value;
   const target = document.querySelector('input[name="mode"]:checked').value === 'transparent' ? [0, 0, 0, 0] : [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16)).concat(255);
   previous = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const count = replaceSelections(data.data, selected, target);
-  ctx.putImageData(data, 0, 0); $('undo').disabled = false;
+  ctx.putImageData(data, bounds.left, bounds.top); $('undo').disabled = false;
   selected = []; showSelection(); status(`${count.toLocaleString()} ピクセルを置き換えました。`);
 });
 $('target').addEventListener('input', () => { $('target-value').textContent = $('target').value.toUpperCase(); });
@@ -134,3 +142,65 @@ const viewport = $('viewport');
 viewport.addEventListener('dragover', e => { e.preventDefault(); viewport.classList.add('dragover'); });
 viewport.addEventListener('dragleave', () => viewport.classList.remove('dragover'));
 viewport.addEventListener('drop', e => { e.preventDefault(); viewport.classList.remove('dragover'); openFile(e.dataTransfer.files[0]); });
+
+function activeRegion() {
+  return $('region-enabled').checked ? region : { left: 0, top: 0, right: canvas.width, bottom: canvas.height };
+}
+function regionImage() {
+  const r = activeRegion();
+  return ctx.getImageData(r.left, r.top, r.right - r.left, r.bottom - r.top);
+}
+function renderRegion() {
+  const enabled = $('region-enabled').checked;
+  $('region-overlay').hidden = !enabled;
+  for (const edge of ['left', 'right', 'top', 'bottom']) {
+    const input = $(`region-${edge}`);
+    input.value = region[edge]; input.disabled = !enabled;
+    const vertical = edge === 'left' || edge === 'right';
+    input.max = vertical ? canvas.width : canvas.height;
+    document.querySelector(`[data-edge="${edge}"]`).style[vertical ? 'left' : 'top'] = `${region[edge] / (vertical ? canvas.width : canvas.height) * 100}%`;
+  }
+  const outline = $('region-outline');
+  outline.style.left = `${region.left / canvas.width * 100}%`;
+  outline.style.top = `${region.top / canvas.height * 100}%`;
+  outline.style.width = `${(region.right - region.left) / canvas.width * 100}%`;
+  outline.style.height = `${(region.bottom - region.top) / canvas.height * 100}%`;
+  $('region-summary').textContent = enabled ? `対象: X ${region.left}〜${region.right - 1} / Y ${region.top}〜${region.bottom - 1}（${region.right - region.left} × ${region.bottom - region.top} px）` : '対象は画像全体です。';
+}
+function setBoundary(edge, value) {
+  if (!Number.isFinite(value)) { renderRegion(); return; }
+  const limits = { left: [0, region.right - 1], right: [region.left + 1, canvas.width], top: [0, region.bottom - 1], bottom: [region.top + 1, canvas.height] };
+  region[edge] = Math.min(limits[edge][1], Math.max(limits[edge][0], Math.round(value)));
+  renderRegion();
+}
+$('region-enabled').addEventListener('change', () => { renderRegion(); updateMatches(); });
+$('region-full').addEventListener('click', () => {
+  region = { left: 0, right: canvas.width, top: 0, bottom: canvas.height };
+  renderRegion(); updateMatches();
+});
+for (const edge of ['left', 'right', 'top', 'bottom']) {
+  $(`region-${edge}`).addEventListener('change', event => { setBoundary(edge, event.target.value === '' ? NaN : Number(event.target.value)); updateMatches(); });
+}
+for (const axis of document.querySelectorAll('.axis')) {
+  let dragging = false;
+  const move = event => {
+    const rect = canvas.getBoundingClientRect();
+    const vertical = axis.classList.contains('vertical');
+    setBoundary(axis.dataset.edge, vertical ? (event.clientX - rect.left) / rect.width * canvas.width : (event.clientY - rect.top) / rect.height * canvas.height);
+  };
+  axis.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault(); dragging = true; axis.setPointerCapture(event.pointerId); move(event);
+  });
+  axis.addEventListener('pointermove', event => { if (dragging) move(event); });
+  axis.addEventListener('pointerup', event => {
+    if (!dragging) return;
+    move(event); dragging = false; axis.releasePointerCapture(event.pointerId); updateMatches();
+  });
+  axis.addEventListener('lostpointercapture', () => { if (dragging) { dragging = false; updateMatches(); } });
+  axis.addEventListener('click', event => event.stopPropagation());
+  axis.addEventListener('keydown', event => {
+    const delta = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
+    if (delta) { event.preventDefault(); setBoundary(axis.dataset.edge, region[axis.dataset.edge] + delta); updateMatches(); }
+  });
+}
