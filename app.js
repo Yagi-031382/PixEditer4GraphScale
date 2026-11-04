@@ -1,8 +1,8 @@
-import { replaceColor, countColor } from './pixels.js';
+import { replaceSelections, countSelections } from './pixels.js';
 const $ = id => document.getElementById(id);
 const canvas = $('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
-let original = null, previous = null, selected = null, fileName = 'image', loadVersion = 0;
+let original = null, previous = null, selected = [], fileName = 'image', loadVersion = 0;
 const hex = color => '#' + color.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
 const status = message => { $('status').textContent = message; };
 function fit() {
@@ -11,22 +11,58 @@ function fit() {
   canvas.style.width = `${canvas.width * scale}px`;
   canvas.style.height = `${canvas.height * scale}px`;
 }
-function showSelection() {
-  $('replace').disabled = !selected;
-  if (!selected) {
-    $('source-value').textContent = '未選択';
-    $('source-detail').textContent = '画像をクリックして色を選択';
-    $('source-swatch').style.background = '#f2f2f6';
-    $('matches').textContent = '完全に同じ RGBA 値の色を対象にします。';
-    return;
-  }
-  $('source-value').textContent = hex(selected);
-  $('source-detail').textContent = `RGBA (${selected.join(', ')})`;
-  $('source-swatch').style.background = `rgba(${selected.slice(0, 3).join(',')},${selected[3] / 255})`;
-  const count = countColor(ctx.getImageData(0, 0, canvas.width, canvas.height).data, selected);
-  $('matches').textContent = `${count.toLocaleString()} ピクセルが一致`;
+function updateMatches() {
+  const count = original ? countSelections(ctx.getImageData(0, 0, canvas.width, canvas.height).data, selected) : 0;
+  $('matches').textContent = selected.length ? `${selected.length} 色を選択 · ${count.toLocaleString()} ピクセルが一致（重複なし）` : '画像をクリックして色を追加してください。';
   $('replace').disabled = count === 0;
+  $('clear-selection').disabled = selected.length === 0;
 }
+function showSelection() {
+  const list = $('selected-colors');
+  list.replaceChildren();
+  selected.forEach((selection, index) => {
+    const row = document.createElement('li');
+    row.className = 'selected-color';
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = `rgba(${selection.color.slice(0, 3).join(',')},${selection.color[3] / 255})`;
+    const title = document.createElement('strong');
+    title.textContent = hex(selection.color);
+    const detail = document.createElement('small');
+    detail.textContent = `RGBA (${selection.color.join(', ')}) · (${selection.x}, ${selection.y})`;
+    const heading = document.createElement('div');
+    heading.className = 'color-readout';
+    const description = document.createElement('div');
+    description.append(title, detail);
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'button secondary remove-color';
+    remove.textContent = '削除'; remove.setAttribute('aria-label', `${index + 1}番目の色 ${hex(selection.color)} を削除`);
+    remove.addEventListener('click', () => { selected.splice(index, 1); showSelection(); });
+    heading.append(swatch, description, remove);
+    const label = document.createElement('label');
+    label.className = 'choice';
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox'; toggle.checked = selection.similar;
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-label', `${index + 1}番目の色の似た色相も対象`);
+    toggle.addEventListener('change', () => { selection.similar = toggle.checked; range.disabled = !toggle.checked; updateMatches(); });
+    label.append(toggle, '似た色相も対象');
+    const tolerance = document.createElement('label');
+    tolerance.className = 'tolerance';
+    const value = document.createElement('span');
+    value.textContent = `色相の許容差 ±${selection.tolerance}°`;
+    const range = document.createElement('input');
+    range.type = 'range'; range.min = '0'; range.max = '60'; range.value = selection.tolerance;
+    range.disabled = !selection.similar;
+    range.setAttribute('aria-label', `${index + 1}番目の色の色相の許容差`);
+    range.addEventListener('input', () => { selection.tolerance = Number(range.value); value.textContent = `色相の許容差 ±${selection.tolerance}°`; updateMatches(); });
+    tolerance.append(value, range);
+    row.append(heading, label, tolerance);
+    list.append(row);
+  });
+  updateMatches();
+}
+$('clear-selection').addEventListener('click', () => { selected = []; showSelection(); });
 async function openFile(file) {
   if (!file) return;
   const version = ++loadVersion;
@@ -40,7 +76,7 @@ async function openFile(file) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
     original = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    previous = null; selected = null; fileName = file.name.replace(/\.[^.]+$/, '') || 'image';
+    previous = null; selected = []; fileName = file.name.replace(/\.[^.]+$/, '') || 'image';
     canvas.hidden = false; $('empty').hidden = true;
     $('controls').disabled = false; $('download').disabled = false; $('reset').disabled = false; $('zoom').disabled = false; $('undo').disabled = true;
     $('dimensions').textContent = `${canvas.width} × ${canvas.height} px`;
@@ -55,28 +91,33 @@ canvas.addEventListener('click', e => {
   const rect = canvas.getBoundingClientRect();
   const x = Math.min(canvas.width - 1, Math.max(0, Math.floor((e.clientX - rect.left) * canvas.width / rect.width)));
   const y = Math.min(canvas.height - 1, Math.max(0, Math.floor((e.clientY - rect.top) * canvas.height / rect.height)));
-  selected = Array.from(ctx.getImageData(x, y, 1, 1).data);
-  showSelection(); status(`座標 (${x}, ${y}) の色を選択しました。`);
+  const color = Array.from(ctx.getImageData(x, y, 1, 1).data);
+  if (selected.some(s => s.color.every((value, i) => value === color[i]))) {
+    status('この色は選択済みです。色ごとの設定を変更できます。');
+    return;
+  }
+  selected.push({ color, x, y, similar: false, tolerance: 15 });
+  showSelection(); status(`座標 (${x}, ${y}) の色を追加しました。続けて別の色をクリックできます。`);
 });
 $('replace').addEventListener('click', () => {
-  if (!selected) return;
+  if (!selected.length) return;
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const color = $('target').value;
   const target = document.querySelector('input[name="mode"]:checked').value === 'transparent' ? [0, 0, 0, 0] : [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16)).concat(255);
   previous = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const count = replaceColor(data.data, selected, target);
+  const count = replaceSelections(data.data, selected, target);
   ctx.putImageData(data, 0, 0); $('undo').disabled = false;
-  selected = null; showSelection(); status(`${count.toLocaleString()} ピクセルを置き換えました。`);
+  selected = []; showSelection(); status(`${count.toLocaleString()} ピクセルを置き換えました。`);
 });
 $('target').addEventListener('input', () => { $('target-value').textContent = $('target').value.toUpperCase(); });
 $('undo').addEventListener('click', () => {
   if (!previous) return;
-  ctx.putImageData(previous, 0, 0); previous = null; selected = null; $('undo').disabled = true; showSelection(); status('直前の操作を元に戻しました。');
+  ctx.putImageData(previous, 0, 0); previous = null; selected = []; $('undo').disabled = true; showSelection(); status('直前の操作を元に戻しました。');
 });
 $('reset').addEventListener('click', () => {
   if (!original) return;
   previous = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  ctx.putImageData(original, 0, 0); selected = null; $('undo').disabled = false; showSelection(); status('最初の画像に戻しました。');
+  ctx.putImageData(original, 0, 0); selected = []; $('undo').disabled = false; showSelection(); status('最初の画像に戻しました。');
 });
 $('download').addEventListener('click', () => {
   canvas.toBlob(blob => {
