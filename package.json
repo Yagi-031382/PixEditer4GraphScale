@@ -2,5 +2,9 @@
   "name": "pixel-color-replacer",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test", "start": "python3 -m http.server 8000 --bind 0.0.0.0" }
+  "scripts": {
+    "test": "node --test",
+    "start": "python3 -m http.server 8000 --bind 0.0.0.0",
+    "build": "node scripts/build.mjs"
+  }
 }

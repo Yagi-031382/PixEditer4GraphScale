@@ -24,7 +24,7 @@ npm start
 
 ## GitHub Pages 公開
 
-リポジトリの Settings → Pages → Build and deployment → Source を **GitHub Actions** に設定します。`main` にプッシュすると `.github/workflows/pages.yml` がテストと公開を実行します。依存パッケージ、ビルド処理、API キーは不要です。相対パスを使っているためプロジェクト Pages のサブパスでも動作します。
+リポジトリの Settings → Pages → Build and deployment → Source を **GitHub Actions** に設定します。`main` にプッシュすると `.github/workflows/pages.yml` がテストと公開を実行します。外部依存パッケージと API キーは不要です。公開時には `npm run build` で `_site/` に静的ファイルを生成し、JavaScript と CSS のファイル名に内容のハッシュを付けます。これにより更新時の古いキャッシュとの混在を防ぎます。相対パスを使っているためプロジェクト Pages のサブパスでも動作します。
 
 ## 複数色と近い色相の選択
 
